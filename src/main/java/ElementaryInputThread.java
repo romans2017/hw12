@@ -1,5 +1,7 @@
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.*;
 import java.util.stream.Stream;
@@ -10,6 +12,7 @@ public class ElementaryInputThread {
     private int numberThreads;
 
     private static class Molecule {
+
         public static final String OXYGEN = "O";
         public static final String HYDROGEN = "H";
 
@@ -56,16 +59,16 @@ public class ElementaryInputThread {
             taskList.add(task);
         }
 
-        public void removeTask(Task task) {
-            taskList.remove(task);
-        }
-
         public boolean hasTask(Task task) {
             return taskList.contains(task);
         }
 
-        public List<Task> getTaskList() {
-            return taskList;
+        public String getComposition() {
+            StringBuilder stringBuilder = new StringBuilder();
+            for (Task task : taskList) {
+                stringBuilder.append(task.getAtom());
+            }
+            return stringBuilder.toString();
         }
 
         public void reset() {
@@ -77,55 +80,42 @@ public class ElementaryInputThread {
 
     private class Task implements Callable {
 
-        //private Phaser barrier;
         private CyclicBarrier barrier;
         private Lock locker;
         private Molecule molecule;
+        private String atom;
 
-        //public Task(Phaser barrier, Lock locker, Molecule molecule) {
         public Task(CyclicBarrier barrier, Lock locker, Molecule molecule) {
             this.barrier = barrier;
             this.locker = locker;
             this.molecule = molecule;
         }
 
+        public String getAtom() {
+            return atom;
+        }
+
         @Override
         public String call() {
-            try {
-                Thread.sleep((long) Math.random() * 10000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
             //get random atom
-            String atom = Math.random() <= 0.6667 ? Molecule.HYDROGEN : Molecule.OXYGEN;
+            atom = Math.random() <= 0.6667 ? Molecule.HYDROGEN : Molecule.OXYGEN;
             System.out.println(atom);
+
             try {
-                Thread.sleep(numberThreads*2);
+                Thread.sleep((long) (getCoefficientTimeout() * numberThreads / 3));
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
+
             try {
-                //for (int i = 0; i < numberThreads; i++) {
-                while(true) {
-                    //Thread.sleep(10);
+                while (true) {
+                    Thread.sleep((long) (Math.random() * 10));
                     if (Thread.currentThread().isInterrupted()) {
-                        //barrier.arriveAndDeregister();
                         barrier.reset();
                         return atom;
                     }
                     if (locker.tryLock(100, TimeUnit.MILLISECONDS)) {
-                        if (molecule.isCreated() && molecule.hasTask(this)) {
-                            //molecule was created with this atom, print atom,
-                            //break loop, molecule is reset
-                            System.out.print(atom);
-                            molecule.removeTask(this);
-                            if (molecule.getTaskList().size() == 0) {
-                                System.out.println("");
-                                molecule.reset();
-                            }
-                            locker.unlock();
-                            break;
-                        } else if (!molecule.isCreated() && !molecule.hasTask(this)) {
+                        if (!molecule.isCreated() && !molecule.hasTask(this)) {
                             //molecule wasn't created yet; try to complete molecule with this atom;
                             //wait at the barrier
                             int atomsIn = atom.equals(Molecule.HYDROGEN) ? Molecule.ATOMS_HYDROGEN : Molecule.ATOMS_OXYGEN;
@@ -133,31 +123,39 @@ public class ElementaryInputThread {
                                 molecule.setAtom(atom, molecule.getAtom(atom) + 1);
                                 molecule.addTask(this);
                                 locker.unlock();
-                                barrier.await(5L, TimeUnit.SECONDS);
-                                //System.out.print(atom);
-                                //break;
+                                barrier.await(10L, TimeUnit.SECONDS);
+                                break;
                             } else {
-                               locker.unlock();
-                               //barrier.arriveAndAwaitAdvance();
+                                locker.unlock();
                             }
                         } else {
-                            /*molecule wasn't created yet
-                            can't complete molecule with this atom
-                            wait at the barrier*/
                             locker.unlock();
-                            //barrier.arriveAndAwaitAdvance();
                         }
-                    } else {
-                        //barrier.arriveAndAwaitAdvance();
                     }
-                    //locker.unlock();
                 }
-                //barrier.arriveAndDeregister();
-            } catch (InterruptedException | BrokenBarrierException | TimeoutException e) {
+            } catch (InterruptedException e) {
                 locker.unlock();
                 e.printStackTrace();
+            } catch (BrokenBarrierException | TimeoutException e) {
+                locker.unlock();
             }
             return atom;
+        }
+    }
+
+    private int getCoefficientTimeout() {
+        if (numberThreads <= 50) {
+            return 300;
+        } else if (numberThreads <= 500) {
+            return 100;
+        } else if (numberThreads <= 1000) {
+            return 30;
+        } else if (numberThreads <= 10000) {
+            return 6;
+        } else if (numberThreads <= 100000) {
+            return 3;
+        } else {
+            return 2;
         }
     }
 
@@ -168,8 +166,25 @@ public class ElementaryInputThread {
         Lock locker = new ReentrantLock();
         Molecule molecule = new Molecule();
         ExecutorService executorService = Executors.newCachedThreadPool();
-        //Phaser barrier = new Phaser(numberThreads);
-        CyclicBarrier barrier = new CyclicBarrier(3);
+
+        Runnable barrierAction = () -> {
+            while (true) {
+                try {
+                    if (locker.tryLock(100, TimeUnit.MILLISECONDS)) {
+                        //molecule was created, print atoms,
+                        //reset molecule
+                        System.out.println(molecule.getComposition());
+                        molecule.reset();
+                        locker.unlock();
+                        break;
+                    }
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+
+            }
+        };
+        CyclicBarrier barrier = new CyclicBarrier(3, barrierAction);
 
         List<Future<String>> results = new ArrayList<>();
 
@@ -178,15 +193,29 @@ public class ElementaryInputThread {
         }
 
         executorService.shutdown();
-        /*long timeout = (long) numberThreads * 30;
         try {
-            if (!executorService.awaitTermination(timeout, TimeUnit.MILLISECONDS)) {
+            if (!executorService.awaitTermination(getCoefficientTimeout() * numberThreads, TimeUnit.MILLISECONDS)) {
                 barrier.reset();
                 executorService.shutdownNow();
             }
         } catch (InterruptedException e) {
             e.printStackTrace();
-        }*/
+        }
+
+        try {
+            Thread.sleep(2000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        for (Future<String> future : results) {
+            try {
+                System.out.println(future.get());
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            } catch (ExecutionException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     public ElementaryInputThread() {

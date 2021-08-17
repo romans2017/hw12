@@ -141,17 +141,9 @@ public class ElementaryInputThread {
                 if (Thread.currentThread().isInterrupted()) {
                     Thread.interrupted();
                 }
-                while (true) {
-                    try {
-                        if (locker.tryLock(10, TimeUnit.SECONDS)) {
-                            molecule.addUnused(atom);
-                            locker.unlock();
-                            break;
-                        }
-                    } catch (InterruptedException interruptedException) {
-                        interruptedException.printStackTrace();
-                    }
-                }
+                locker.lock();
+                molecule.addUnused(atom);
+                locker.unlock();
             }
         }
     }

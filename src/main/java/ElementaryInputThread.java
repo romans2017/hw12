@@ -1,15 +1,12 @@
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.*;
-import java.util.stream.Stream;
 
 public class ElementaryInputThread {
-    public static int DEFAULT_NUMBER_THREADS = 100;
+    public static final int DEFAULT_NUMBER_THREADS = 100;
 
-    private int numberThreads;
+    private final int numberThreads;
 
     private static class Molecule {
 
@@ -21,8 +18,8 @@ public class ElementaryInputThread {
 
         private int hydrogen;
         private int oxygen;
-        private List<Task> taskList = new ArrayList<>();
-        private List<String> unused = new ArrayList<>();
+        private final List<Task> taskList = new ArrayList<>();
+        private final List<String> unused = new ArrayList<>();
         private int numberOf;
 
         public int getAtom(String atom) {
@@ -196,7 +193,7 @@ public class ElementaryInputThread {
                         //molecule was created, print atoms, reset molecule
                         String composition = molecule.getComposition();
                         molecule.reset();
-                        System.out.println("Molecule " + molecule.numberOf + ":" + composition);
+                        System.out.println("Molecule " + molecule.getNumberOf() + ":" + composition);
                         locker.unlock();
                         break;
                     }
@@ -216,7 +213,6 @@ public class ElementaryInputThread {
         executorService.shutdown();
         try {
             if (!executorService.awaitTermination((long) getCoefficientTimeout() * (long) numberThreads, TimeUnit.MILLISECONDS)) {
-                barrier.reset();
                 executorService.shutdownNow();
             }
         } catch (InterruptedException e) {

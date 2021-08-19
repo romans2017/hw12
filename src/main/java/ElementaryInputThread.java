@@ -1,5 +1,7 @@
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.*;
 
@@ -90,7 +92,7 @@ public class ElementaryInputThread {
         }
     }
 
-    private class Task implements Runnable {
+    private class Task implements Callable<String> {
 
         private final CyclicBarrier barrier;
         private final Lock locker;
@@ -108,33 +110,45 @@ public class ElementaryInputThread {
         }
 
         @Override
-        public void run() {
+        public String call() {
             //get random atom
             atom = Math.random() <= 0.6667 ? Molecule.HYDROGEN : Molecule.OXYGEN;
             System.out.println(atom);
+            int atomsIn = atom.equals(Molecule.HYDROGEN) ? Molecule.ATOMS_HYDROGEN : Molecule.ATOMS_OXYGEN;
 
             try {
-                Thread.sleep((long) getCoefficientTimeout() * (long) numberThreads / 3);
+                Thread.sleep(numberThreads < 100 ? (long) numberThreads * 50 : numberThreads);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
 
             try {
-                while (true) {
+                int counter = numberThreads;
+                int numberLastMolecule = 0;
+                while (counter > 0) {
                     Thread.sleep((long) (Math.random() * 10));
                     locker.lockInterruptibly();
-                    if (!molecule.isCreated() && !molecule.hasTask(this)) {
+                    if (!molecule.isCreated() && !molecule.hasTask(this) && molecule.getAtom(atom) < atomsIn) {
                         //molecule wasn't created yet; try to complete molecule with this atom;
                         //wait at the barrier
-                        int atomsIn = atom.equals(Molecule.HYDROGEN) ? Molecule.ATOMS_HYDROGEN : Molecule.ATOMS_OXYGEN;
-                        if (molecule.getAtom(atom) < atomsIn) {
-                            molecule.setAtom(atom, molecule.getAtom(atom) + 1);
-                            molecule.addTask(this);
-                            locker.unlock();
-                            barrier.await(10L, TimeUnit.SECONDS);
-                            break;
-                        }
+                        molecule.setAtom(atom, molecule.getAtom(atom) + 1);
+                        molecule.addTask(this);
+                        locker.unlock();
+                        barrier.await(2L, TimeUnit.SECONDS);
+                        break;
+                    } else if (molecule.getNumberOf() == numberLastMolecule) {
+                        //number of last molecule equals to saved number - decrement counter
+                        counter--;
+                    } else if (molecule.getNumberOf() != numberLastMolecule) {
+                        //number of last molecule not equals to saved number - reset counter
+                        counter = numberThreads - numberLastMolecule * (Molecule.ATOMS_HYDROGEN + Molecule.ATOMS_OXYGEN);
+                        numberLastMolecule = molecule.getNumberOf();
                     }
+                    locker.unlock();
+                }
+                if (counter == 0) {
+                    locker.lock();
+                    molecule.addUnused(atom);
                     locker.unlock();
                 }
             } catch (BrokenBarrierException | TimeoutException | InterruptedException e) {
@@ -145,22 +159,7 @@ public class ElementaryInputThread {
                 molecule.addUnused(atom);
                 locker.unlock();
             }
-        }
-    }
-
-    private int getCoefficientTimeout() {
-        if (numberThreads <= 50) {
-            return 300;
-        } else if (numberThreads <= 500) {
-            return 100;
-        } else if (numberThreads <= 1000) {
-            return 30;
-        } else if (numberThreads <= 10000) {
-            return 6;
-        } else if (numberThreads <= 100000) {
-            return 3;
-        } else {
-            return 2;
+            return atom;
         }
     }
 
@@ -172,6 +171,7 @@ public class ElementaryInputThread {
         this(DEFAULT_NUMBER_THREADS);
     }
 
+    @SuppressWarnings("unchecked")
     public void start() {
 
         Lock locker = new ReentrantLock();
@@ -198,21 +198,23 @@ public class ElementaryInputThread {
         CyclicBarrier barrier = new CyclicBarrier(3, barrierAction);
 
         System.out.println("Number atoms - " + numberThreads + ":");
+
+        Set<Task> tasks = new HashSet<>();
         for (int i = 0; i < numberThreads; i++) {
-            executorService.submit(new Task(barrier, locker, molecule));
+            tasks.add(new Task(barrier, locker, molecule));
         }
 
-        executorService.shutdown();
         try {
-            if (!executorService.awaitTermination((long) getCoefficientTimeout() * (long) numberThreads, TimeUnit.MILLISECONDS)) {
-                executorService.shutdownNow();
-            }
+            executorService.invokeAll(tasks);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
 
+        executorService.shutdown();
         try {
-            Thread.sleep(5000);
+            if (!executorService.awaitTermination(numberThreads < 100 ? (long) numberThreads * 100 : numberThreads, TimeUnit.MILLISECONDS)) {
+                executorService.shutdownNow();
+            }
         } catch (InterruptedException e) {
             e.printStackTrace();
         }

@@ -1,4 +1,4 @@
-package anno;
+package ua.goit.hw12waterthread.anno;
 
 import java.util.concurrent.*;
 

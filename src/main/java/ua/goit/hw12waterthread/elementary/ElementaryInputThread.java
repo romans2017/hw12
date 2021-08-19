@@ -1,4 +1,4 @@
-package ua.goit.waterthread;
+package ua.goit.hw12waterthread.elementary;
 
 import java.util.ArrayList;
 import java.util.HashSet;

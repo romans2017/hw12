@@ -1,4 +1,4 @@
-package anno;
+package ua.goit.hw12waterthread.anno;
 
 @Repeat(10)
 public class SimpleRunnable implements Runnable{

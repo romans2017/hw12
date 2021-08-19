@@ -1,6 +1,6 @@
-import anno.SimpleRunnable;
-import anno.ThreadAnnotation;
-import ua.goit.waterthread.ElementaryInputThread;
+import ua.goit.hw12waterthread.anno.SimpleRunnable;
+import ua.goit.hw12waterthread.anno.ThreadAnnotation;
+import ua.goit.hw12waterthread.elementary.ElementaryInputThread;
 
 public class TestConcurrency {
 

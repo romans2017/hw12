@@ -1,3 +1,5 @@
+package ua.goit.waterthread;
+
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -220,6 +222,6 @@ public class ElementaryInputThread {
         }
 
         List<String> unused = molecule.getUnused();
-        System.out.print("Unused atoms total - " + unused.size() + ": " + unused);
+        System.out.println("Unused atoms total - " + unused.size() + ": " + unused);
     }
 }
